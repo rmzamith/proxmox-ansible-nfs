@@ -1,0 +1,52 @@
+---
+- name: Setup NFS server with /mnt/shared on /dev/sdb1
+  hosts: localhost
+  become: true
+  tasks:
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install NFS kernel server
+      apt:
+        name: nfs-kernel-server
+        state: present
+
+    - name: Ensure /mnt/shared directory exists
+      file:
+        path: /mnt/shared
+        state: directory
+        owner: root
+        group: root
+        mode: '0777'
+
+    - name: Format /dev/sdb1 as ext4 if not already formatted
+      filesystem:
+        fstype: ext4
+        dev: /dev/sdb1
+      when: >
+        ansible_devices['sdb']['partitions']['sdb1']['filesystem'] is not defined
+
+    - name: Mount /dev/sdb1 to /mnt/shared
+      mount:
+        src: /dev/sdb1
+        path: /mnt/shared
+        fstype: ext4
+        opts: defaults
+        state: mounted
+
+    - name: Ensure NFS export exists in /etc/exports
+      lineinfile:
+        path: /etc/exports
+        line: "/mnt/shared 192.168.70.0/24(rw,sync,no_subtree_check,no_root_squash)"
+        state: present
+
+    - name: Reload NFS exports
+      command: exportfs -ra
+
+    - name: Enable and start NFS server
+      systemd:
+        name: nfs-server
+        enabled: true
+        state: started
